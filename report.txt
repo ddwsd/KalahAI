@@ -1,0 +1,322 @@
+Description of the design of your classes. We know what the public interfaces are, but what about your implementations: What are the major data structures that you use? What private member functions or helper non-member functions did you define for what purpose?
+
+BOARD:
+To store the number of beans in each hole including the pot, I used 2 integer vectors, one for each side. I have a private member function to help with the initializing of the vectors (using vector's pushback function - of course, the first pushback value should be 0, the starting number of beans in the pot). I also have 2 bool functions that check that the side and hole passed into my other functions are valid, i.e. are not negative or greater than the total holes, or if the side is neither north nor south. 
+
+GAME:
+For game, I did not introduce many new functions, other than a variable of type Side that indicates the current turn. The move() function uses this to help in determining which player should make a move.
+
+PLAYER:
+The only private member functions of player are found in SmartPlayer, whose implememtation would be explained later.
+
+=======================================================================================================================================
+
+Description of your design for SmartPlayer::chooseMove, including what heuristics you used to evaluate board positions.
+
+Pseudocode:
+	void chooseMove(in: &alarmclock, side, &board, depth; out: bestHole, value):
+		if no move for player exists (i.e., game is over),
+			bestHole = -1
+			value = value of this position (i.e., +8, -8, or 0)
+			return
+		if depth > limit(can be any number)
+			bestHole = -1
+			value = value of this position
+			return
+		if time is up (checked using the alarmclock)
+			bestHole = -1
+			value = value of this position
+			return
+		initialize an integer "first" that stores the first possible hole the player can use
+		for every hole h on the player's side
+			if the beans in that hole is 0 (illegal move)
+				increment "first"
+				continue
+			create a copy of the board
+			if the hole selected results in an incomplete move (I have a function "completeMove" that makes a move and checks for this, will explain later)
+				chooseMove(alarmclock, side, temp, depth, h3, v2) (i.e. the player chooses a move again)
+			else
+				chooseMove(alarmclock, opponent's side, temp, depth + 1, h2, v2) (i.e. the player's opponent chooses a move)
+			if h is equals to "first"
+				bestHole = h
+				value = v2
+			if v2 is better for the player than best seen so far,
+				bestHole = h
+				value = v2
+			if time is up
+				break
+		return
+"first" is meant to ensure that as long as there is a possible move, chooseMove choose it (i.e. chooseMove should not return an illegal move).
+
+"completeMove" is a function that makes a move for the player. It sows, and captures if necessary. If the endHole returned by sow is 0, it evaluates to false so that the player can choose another move. Otherwise, it returns true.
+
+My "evaluate" function returns its valuation of the board state for the SOUTH player. It compares the difference of beans in play and in pot for the two players. If the game is over, it returns INT_MIN if south loses, INT_MAX if south wins and 0 if it is a draw. (It doesn't matter how much each player wins or loses by, so my chooseMove function tends to favour the first hole that leads to a winning position.)
+
+==========================================================================================================================================================
+
+Pseudocode for non-trivial algorithms.
+
+bool Board::sow(Side s, int hole, Side& endSide, int& endHole) 
+	if hole is not valid or side is not valid or hole refers to the pot or hole is empty
+		return false
+	int currenthole(hole), Side currentside(s)
+	if side = south
+		int counter = number of beans in that hole initially
+		while counter > 0
+			if currenthole is referring to the pot (i.e. 0)
+				currentside = north
+				currenthole = total number of holes in each side
+			if currentside is south
+				if currenthole is not referring to the one before the pot
+					increment currenthole
+					increment the beans in south's currenthole
+				else
+					currenthole = 0
+					increment the beans in south's currenthole (i.e. in south's pot)
+			else
+				if currenthole is not referring to the one before the pot
+					decrement currenthole
+					increment the beans in north's currenthole
+				else
+					currentside = south
+					increment the beans in south's currenthole (i.e. in south's hole 1)
+			decrement the beans in south's hole
+			decrement counter
+	else
+		int counter = number of beans in that hole(north's hole) initially
+		while counter > 0
+			if currenthole is referring to the pot (i.e. 0)
+				currentside = south
+			if currentside is south
+				if currenthole is not referring to the one before the pot
+					increment currenthole
+					increment the beans in south's currenthole
+				else
+					currentside = north
+					increment the beans in north's currenthole (i.e. in north's last hole)
+			else
+				if currenthole is not referring to the one before the pot
+					decrement currenthole
+					increment the beans in north's currenthole
+			decrement the beans in north's hole
+			decrement counter
+	endhole = currenthole
+	endside = currentside
+	return true
+
+=============================================================================================
+
+Note about any known bugs, serious inefficiencies, or notable problems you had.
+
+I was unsure if we should consider the case for sow where the beans loop over the entire board. The specs did not mention anything about it. In that case, beans(endside,endhole) == 1 is no longer the correct condition for capture. However, there is no simple way to move exactly 1 bean into the pot, and I also realized that for this to work, I would have to implement a data structure (like an array or vector) to store all the holes that have beans of 0 previously. This would probably make my program run much slower, so I settled for the easier solution in the end.
+
+
+
+Test cases
+
+
+BOARD:
+	//checks that the board is initialized correctly when wrong variables are passed into the constructor
+	Board wrong(-1, -1);
+	assert(wrong.holes() == 1);
+	assert(wrong.beans(NORTH, 0) == 0);
+	assert(wrong.beans(SOUTH, 0) == 0);
+	assert(wrong.beans(SOUTH, 1) == 0);
+	assert(wrong.beans(NORTH, 1) == 0);
+	assert(wrong.beansInPlay(NORTH) == 0);
+	assert(wrong.beansInPlay(SOUTH) == 0);
+	assert(wrong.totalBeans() == 0);
+
+	//construction
+	Board b(6, 4);
+	assert(b.beans(NORTH, 0) == 0); 
+	assert(b.beans(SOUTH, 0) == 0);
+	for (int i = 1; i <= 6; i++)
+	{
+		assert(b.beans(NORTH, i) == 4); //checks that beans() works as well
+		assert(b.beans(SOUTH, i) == 4);
+	}
+	assert(b.beansInPlay(NORTH) == 24);
+	assert(b.beansInPlay(SOUTH) == 24);
+	assert(b.totalBeans() == 48);
+
+	//simple test for assignment operator (since I did not use it in my implementation)
+	//copy constructor is tested in the game class
+	Board test(2, 2);
+	Board hello(1, 1);
+	test = hello; 
+	assert(test.holes() == 1 && test.beans(NORTH,1) == 1 && test.beans(SOUTH,1) == 1 && test.totalBeans() == 2 && test.beans(NORTH, POT) == 0);
+
+	//beans
+	assert(b.beans(NORTH, 20) == -1);
+	assert(b.beans(NORTH, 0) == 0); //beans() should work for pot as well
+
+	//move to pot
+	assert(!b.moveToPot(NORTH, 0, NORTH));
+	assert(!b.moveToPot(NORTH, 7, SOUTH));
+	assert(b.moveToPot(NORTH, 6, NORTH));
+	assert(b.beans(NORTH, 6) == 0); //check that all beans have been moved
+	assert(b.beansInPlay(NORTH) == 20);
+	assert(b.moveToPot(NORTH, 6, NORTH)); //should still work even though beans in that hole is 0
+	b.setBeans(NORTH, 6, 4);
+	assert(b.totalBeans() == 52); //check that total has been updated 
+	assert(b.beansInPlay(NORTH) == 24); //check beans in play has been updated
+	b.setBeans(NORTH, 0, 0);
+	assert(b.totalBeans() == 48);
+	assert(b.beansInPlay(NORTH) == 24); //remains unchanged
+
+	//sow
+	Board b1(2, 0);
+	b1.setBeans(NORTH, 1, 5);
+	int eh;
+	Side es;
+	assert(!b1.sow(NORTH, 2, es, eh)); //cannot sow an empty hole
+	assert(b1.sow(NORTH, 1, es, eh)); //test sow for north side, test that sowing is only done 5 times, even though there is one bean remaining in north's hole 1
+	/*0 5 0
+	    0 0 0*/
+	/*1 1 1
+	    1 1 0*/
+	assert(b1.beans(NORTH, 0) == 1 && b1.beans(NORTH, 1) == 1 && b1.beans(NORTH, 2) == 1 && b1.beans(SOUTH, 0) == 0 && b1.beans(SOUTH, 1) == 1 && b1.beans(SOUTH, 2) == 1 && es == NORTH && eh == 1);
+	assert(!b1.sow(NORTH, 0, es, eh)); //cannot sow a pot
+	Board b2(2, 0);
+	b2.setBeans(SOUTH, 1, 8);
+	/*0 0 0
+	    8 0 0*/
+	/*0 1 2
+	    1 2 2*/
+	assert(b2.sow(SOUTH, 1, es, eh)); //test sow for south side, test the direction of sow
+	assert(b2.beans(NORTH, 0) == 0 && b2.beans(NORTH, 1) == 1 && b2.beans(NORTH, 2) == 2 && b2.beans(SOUTH, 0) == 2 && b2.beans(SOUTH, 1) == 1 && b2.beans(SOUTH, 2) == 2 && es == NORTH && eh ==2);
+
+
+
+
+
+PLAYER:
+	HumanPlayer hp("Marge");
+	assert(hp.name() == "Marge"  &&  hp.isInteractive());
+	BadPlayer bp("Homer");
+	assert(bp.name() == "Homer" && !bp.isInteractive());
+	SmartPlayer sp("Lisa");
+	assert(sp.name() == "Lisa" && !sp.isInteractive());
+	Board player(3, 2);
+	player.setBeans(SOUTH, 2, 0);
+	cout << "=========" << endl;
+	int n = hp.chooseMove(player, SOUTH);
+	cout << "=========" << endl;
+	assert(n == 1 || n == 3); //checks that only legal moves would be allowed as input
+	n = bp.chooseMove(player, SOUTH);
+	assert(n == 1 || n == 3); //checks that noninteractive players can only choose legal moves
+	n = sp.chooseMove(player, SOUTH);
+	assert(n == 1 || n == 3);
+	player.setBeans(SOUTH, 1, 0);
+	player.setBeans(SOUTH, 3, 0); //no possible moves for south
+	assert(bp.chooseMove(player, SOUTH) == -1); 
+	hp.chooseMove(player, SOUTH); //couts "There are no beans in this hole" when 1-3 is entered or "Please choose a hole between 1 to 3" for all other integers
+
+
+
+
+GAME:
+	//initializing a game itself verifies that the copy constructor for board is working
+	BadPlayer bp1("Bart");
+	BadPlayer bp2("Homer");
+	Board b(3, 0);
+	b.setBeans(SOUTH, 1, 2);
+	b.setBeans(NORTH, 2, 1);
+	b.setBeans(NORTH, 3, 2);
+	Game g(b, &bp1, &bp2);
+	bool over;
+	bool hasWinner;
+	Side winner;
+	//    Homer
+	//   0  1  2
+	// 0         0
+	//   2  0  0
+	//    Bart
+	g.status(over, hasWinner, winner);
+	assert(!over && !hasWinner && g.beans(NORTH, POT) == 0 && g.beans(SOUTH, POT) == 0 &&
+		g.beans(NORTH, 1) == 0 && g.beans(NORTH, 2) == 1 && g.beans(NORTH, 3) == 2 &&
+		g.beans(SOUTH, 1) == 2 && g.beans(SOUTH, 2) == 0 && g.beans(SOUTH, 3) == 0);
+
+	g.move();
+	//   0  1  0
+	// 0         3
+	//   0  1  0
+	g.status(over, hasWinner, winner); //tests that game takes care of capture correctly
+	assert(!over && !hasWinner && g.beans(NORTH, POT) == 0 && g.beans(SOUTH, POT) == 3 &&
+		g.beans(NORTH, 1) == 0 && g.beans(NORTH, 2) == 1 && g.beans(NORTH, 3) == 0 &&
+		g.beans(SOUTH, 1) == 0 && g.beans(SOUTH, 2) == 1 && g.beans(SOUTH, 3) == 0);
+
+	g.move();
+	//   1  0  0
+	// 0         3
+	//   0  1  0
+	g.status(over, hasWinner, winner);
+	assert(!over && !hasWinner && g.beans(NORTH, POT) == 0 && g.beans(SOUTH, POT) == 3 &&
+		g.beans(NORTH, 1) == 1 && g.beans(NORTH, 2) == 0 && g.beans(NORTH, 3) == 0 &&
+		g.beans(SOUTH, 1) == 0 && g.beans(SOUTH, 2) == 1 && g.beans(SOUTH, 3) == 0);
+
+	g.move();
+	//   1  0  0
+	// 0         3
+	//   0  0  1
+	g.status(over, hasWinner, winner);
+	assert(!over && !hasWinner && g.beans(NORTH, POT) == 0 && g.beans(SOUTH, POT) == 3 &&
+		g.beans(NORTH, 1) == 1 && g.beans(NORTH, 2) == 0 && g.beans(NORTH, 3) == 0 &&
+		g.beans(SOUTH, 1) == 0 && g.beans(SOUTH, 2) == 0 && g.beans(SOUTH, 3) == 1);
+
+	g.move();
+	//   0  0  0
+	// 1         4
+	//   0  0  0
+	g.status(over, hasWinner, winner); //tests that the game does the sweeping for you
+	assert(over && g.beans(NORTH, POT) == 1 && g.beans(SOUTH, POT) == 4 &&
+		g.beans(NORTH, 1) == 0 && g.beans(NORTH, 2) == 0 && g.beans(NORTH, 3) == 0 &&
+		g.beans(SOUTH, 1) == 0 && g.beans(SOUTH, 2) == 0 && g.beans(SOUTH, 3) == 0);
+	assert(hasWinner && winner == SOUTH);
+	
+	Board c(2, 1);
+	Game h(c, &bp1, &bp2);
+	/*0 1 1
+	    1 1 0*/
+	h.status(over, hasWinner, winner);
+	assert(!over && !hasWinner && h.beans(NORTH, POT) == 0 && h.beans(SOUTH, POT) == 0 &&
+		h.beans(NORTH, 1) == 1 && h.beans(NORTH, 2) == 1 &&
+		h.beans(SOUTH, 1) == 1 && h.beans(SOUTH, 2) == 1 );
+	h.move();  //my bad player takes the last hole always, tests that move() can make multiple moves and capture
+	/*0 1 1
+	    1 0 1*/
+	/*0 1 0
+	    0 0 3*/
+	h.status(over, hasWinner, winner);
+	assert(over && hasWinner && h.beans(NORTH, POT) == 1 && h.beans(SOUTH, POT) == 3 &&
+		h.beans(NORTH, 1) == 0 && h.beans(NORTH, 2) == 0 &&
+		h.beans(SOUTH, 1) == 0 && h.beans(SOUTH, 2) == 0);
+	assert(winner == SOUTH);
+
+
+
+
+SMARTPLAYER:
+	//in most cases, I believe that the player that starts first (SOUTH) would win. However, there are some boards where this is impossible, if both players are smartPlayers. Testing smartPlayer against smartPlayer is a good way to ensure both players make the optimal decisions, that is, if smartPlayer is implemented correctly. 
+	//some tests to see that smartPlayer chooses the correct move
+	Board p1(4, 0);
+	p1.setBeans(NORTH, 0, 4);
+	p1.setBeans(NORTH, 1, 0);
+	p1.setBeans(NORTH, 2, 0);
+	p1.setBeans(NORTH, 3, 1);
+	p1.setBeans(SOUTH, 0, 1);
+	p1.setBeans(SOUTH, 1, 2);
+	p1.setBeans(SOUTH, 2, 0);
+	p1.setBeans(SOUTH, 4, 1);
+	/*4 0 0 1 0
+	    2 0 0 1 1*/
+	assert(sp.chooseMove(p1, SOUTH) == 4 || 1); //hole 4 and 1 would both lead to victory
+
+	Board p2(2, 1);
+	assert(sp.chooseMove(p1, SOUTH) == 2); //hole 2 would lead to instant victory
+
+
+	For (6,4) Kalah with my smartplayer (south) vs badplayer (north) -> smartplayer wins
+	 			badplayer (south) vs smartplayer (north) -> smartplayer wins
+
